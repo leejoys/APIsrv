@@ -56,8 +56,7 @@ func New() *API {
 
 // Регистрация обработчиков API.
 func (api *API) endpoints() {
-	//test
-	api.r.HandleFunc("/test", api.test).Methods(http.MethodGet)
+
 	//метод вывода списка новостей,
 	api.r.HandleFunc("/news/latest", api.latest).Methods(http.MethodGet)
 	// //метод фильтра новостей,
@@ -74,11 +73,6 @@ func (api *API) endpoints() {
 // Требуется для передачи маршрутизатора веб-серверу.
 func (api *API) Router() *mux.Router {
 	return api.r
-}
-
-//test
-func (api *API) test(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("test OK"))
 }
 
 //метод вывода списка новостей
@@ -100,13 +94,14 @@ func (api *API) latest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	posts := []NewsShortDetailed{}
-	err = json.Unmarshal(bPosts, &posts)
+	answer := GWAnswer{}
+	err = json.Unmarshal(bPosts, &answer.PostsArr)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	bytes, err := json.Marshal(posts)
+
+	bytes, err := json.Marshal(answer.PostsArr)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
