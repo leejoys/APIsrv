@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -8,6 +9,37 @@ import (
 
 	"github.com/gorilla/mux"
 )
+
+//Модель полной формы новости
+type NewsFullDetailed struct {
+	ID      int    `xml:"-" json:"ID"`                // номер записи
+	Title   string `xml:"title" json:"Title"`         // заголовок публикации
+	Content string `xml:"description" json:"Content"` // содержание публикации
+	PubDate string `xml:"pubDate" json:"-"`           // время публикации из RSS
+	PubTime int64  `xml:"-" json:"PubTime"`           //время публикации для БД и фронта
+	Link    string `xml:"link" json:"Link"`           // ссылка на источник
+}
+
+//Модель короткой формы новости
+type NewsShortDetailed struct {
+	ID      int    `xml:"-" json:"ID"`                // номер записи
+	Title   string `xml:"title" json:"Title"`         // заголовок публикации
+	Content string `xml:"description" json:"Content"` // содержание публикации
+	PubDate string `xml:"pubDate" json:"-"`           // время публикации из RSS
+	PubTime int64  `xml:"-" json:"PubTime"`           //время публикации для БД и фронта
+	Link    string `xml:"link" json:"Link"`           // ссылка на источник
+}
+
+type Paginator struct {
+	SumOfPages  uint
+	CurrentPage uint
+	NewsOnPage  uint
+}
+
+type GWAnswer struct {
+	PostsArr  []NewsShortDetailed
+	Paginator Paginator
+}
 
 // Программный интерфейс приложения
 type API struct {
@@ -63,7 +95,18 @@ func (api *API) latest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	bytes, err := io.ReadAll(resp.Body)
+	bPosts, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	posts := []NewsShortDetailed{}
+	err = json.Unmarshal(bPosts, &posts)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	bytes, err := json.Marshal(posts)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
