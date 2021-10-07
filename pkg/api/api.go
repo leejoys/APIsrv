@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -33,9 +34,9 @@ type NewsShortDetailed struct {
 }
 
 type Paginator struct {
-	SumOfPages  uint
-	CurrentPage uint
-	NewsOnPage  uint
+	SumOfPages  int
+	CurrentPage int
+	NewsOnPage  int
 }
 
 type DBAnswer struct {
@@ -97,26 +98,35 @@ func (api *API) latest(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/news/%d/%d", page, NewsOnPage))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("http.Get error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
+
 	bPosts, err := io.ReadAll(resp.Body)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("ReadAll error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	if resp.StatusCode != 200 {
+		http.Error(w, string(bPosts), http.StatusInternalServerError)
 		return
 	}
 
 	dba := DBAnswer{}
-	err = json.Unmarshal(bPosts, &dba.Posts)
+	err = json.Unmarshal(bPosts, &dba)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Unmarshal error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 	answer := GWAnswer{}
 	answer.PostsArr = dba.Posts
-	bytes, err := json.Marshal(answer.PostsArr)
+	answer.Paginator.NewsOnPage = NewsOnPage
+	answer.Paginator.CurrentPage = page
+	answer.Paginator.SumOfPages = int(math.Ceil(float64(dba.Count) / float64(NewsOnPage)))
+	bytes, err := json.Marshal(answer)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Marshal error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 	w.Write(bytes)
