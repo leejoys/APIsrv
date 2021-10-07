@@ -10,6 +10,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
+const NewsOnPage = 15
+
 //Модель полной формы новости
 type NewsFullDetailed struct {
 	ID      int    `xml:"-" json:"ID"`                // номер записи
@@ -34,6 +36,11 @@ type Paginator struct {
 	SumOfPages  uint
 	CurrentPage uint
 	NewsOnPage  uint
+}
+
+type DBAnswer struct {
+	Count int
+	Posts []NewsShortDetailed
 }
 
 type GWAnswer struct {
@@ -78,13 +85,17 @@ func (api *API) Router() *mux.Router {
 //метод вывода списка новостей
 //localhost:8080/news/latest?page=1
 func (api *API) latest(w http.ResponseWriter, r *http.Request) {
-	countS := r.URL.Query().Get("page")
-	count, err := strconv.Atoi(countS)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+	page := 0
+	pageS := r.URL.Query().Get("page")
+	if pageS != "" {
+		var err error
+		page, err = strconv.Atoi(pageS)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/news/%d", count))
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/news/%d/%d", page, NewsOnPage))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -94,13 +105,15 @@ func (api *API) latest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	answer := GWAnswer{}
-	err = json.Unmarshal(bPosts, &answer.PostsArr)
+
+	dba := DBAnswer{}
+	err = json.Unmarshal(bPosts, &dba.Posts)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
+	answer := GWAnswer{}
+	answer.PostsArr = dba.Posts
 	bytes, err := json.Marshal(answer.PostsArr)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
