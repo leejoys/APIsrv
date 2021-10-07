@@ -67,8 +67,8 @@ func (api *API) endpoints() {
 
 	//метод вывода списка новостей,
 	api.r.HandleFunc("/news/latest", api.latest).Methods(http.MethodGet)
-	// //метод фильтра новостей,
-	// api.r.HandleFunc("/news/filter", api.filter).Methods(http.MethodGet)
+	//метод фильтра новостей,
+	api.r.HandleFunc("/news/filter", api.filter).Methods(http.MethodGet)
 	// //метод получения детальной новости,
 	// api.r.HandleFunc("/news/detailed", api.detailed).Methods(http.MethodGet)
 	// //метод добавления комментария.
@@ -133,35 +133,56 @@ func (api *API) latest(w http.ResponseWriter, r *http.Request) {
 }
 
 //метод фильтра новостей
-//localhost:8080/news/filter?sort=date&direction=desc&count=10&offset=0
-// func (api *API) filter(w http.ResponseWriter, r *http.Request) {
-// 	q := r.URL.Query()
-// 	sort := q.Get("sort")
-// 	direction := q.Get("direction")
-// 	countS := q.Get("count")
-// 	count, err := strconv.Atoi(countS)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusBadRequest)
-// 		return
-// 	}
-// 	offsetS := q.Get("offset")
-// 	offset, err := strconv.Atoi(offsetS)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusBadRequest)
-// 		return
-// 	}
-// 	posts, err := api.newsDB.PostsByFilter(sort, direction, count, offset)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-// 	bytes, err := json.Marshal(posts)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-// 	w.Write(bytes)
-// }
+//localhost:8080/news/filter?page=1&keyword=Go
+func (api *API) filter(w http.ResponseWriter, r *http.Request) {
+	page := 0
+	q := r.URL.Query()
+	k := q.Get("keyword")
+	pageS := r.URL.Query().Get("page")
+	if pageS != "" {
+		var err error
+		page, err = strconv.Atoi(pageS)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/filter/%d/%d/%s", page, NewsOnPage, k))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("http.Get error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	bPosts, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("ReadAll error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	if resp.StatusCode != 200 {
+		http.Error(w, string(bPosts), http.StatusInternalServerError)
+		return
+	}
+
+	dba := DBAnswer{}
+	err = json.Unmarshal(bPosts, &dba)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Unmarshal error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+	answer := GWAnswer{}
+	answer.PostsArr = dba.Posts
+	answer.Paginator.NewsOnPage = NewsOnPage
+	answer.Paginator.CurrentPage = page
+	answer.Paginator.SumOfPages = int(math.Ceil(float64(dba.Count) / float64(NewsOnPage)))
+	bytes, err := json.Marshal(answer)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Marshal error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+	w.Write(bytes)
+}
 
 //метод получения детальной новости,
 //localhost:8080/news/detailed?id=1
