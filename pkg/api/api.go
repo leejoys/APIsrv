@@ -49,6 +49,16 @@ type GWAnswer struct {
 	Paginator Paginator
 }
 
+// Comment - комментарий.
+type Comment struct {
+	ID            int    `json:"ID"`            // номер записи
+	Author        string `json:"Author"`        // автор комментария
+	Content       string `json:"Content"`       // содержание комментария
+	PubTime       int64  `json:"PubTime"`       //время комментария для БД и фронта
+	ParentPost    int    `json:"ParentPost"`    // ID родительской новости
+	ParentComment int    `json:"ParentComment"` // ID родительского комментария
+}
+
 // Программный интерфейс приложения
 type API struct {
 	r *mux.Router
