@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -75,14 +76,14 @@ func New() *API {
 // Регистрация обработчиков API.
 func (api *API) endpoints() {
 
-	//метод вывода списка новостей,
+	//метод вывода списка новостей
 	api.r.HandleFunc("/news/latest", api.latest).Methods(http.MethodGet)
-	//метод фильтра новостей,
+	//метод фильтра новостей
 	api.r.HandleFunc("/news/filter", api.filter).Methods(http.MethodGet)
-	// //метод получения детальной новости,
+	// //метод получения детальной новости
 	// api.r.HandleFunc("/news/detailed", api.detailed).Methods(http.MethodGet)
-	// //метод добавления комментария.
-
+	//метод добавления комментария
+	api.r.HandleFunc("/comments/store", api.storeComment).Methods(http.MethodPost)
 	// //метод получения комментариев по id новости.
 	// api.r.HandleFunc("/comments/{id}", api.comments).Methods(http.MethodGet)
 }
@@ -108,13 +109,13 @@ func (api *API) latest(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/news/%d/%d", page, NewsOnPage))
 	if err != nil {
-		http.Error(w, fmt.Sprintf("http.Get error: %s", err.Error()), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("latest http.Get error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 
 	bPosts, err := io.ReadAll(resp.Body)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("ReadAll error: %s", err.Error()), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("latest ReadAll error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 
@@ -126,7 +127,7 @@ func (api *API) latest(w http.ResponseWriter, r *http.Request) {
 	dba := DBAnswer{}
 	err = json.Unmarshal(bPosts, &dba)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Unmarshal error: %s", err.Error()), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("latest Unmarshal error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 	answer := GWAnswer{}
@@ -136,7 +137,7 @@ func (api *API) latest(w http.ResponseWriter, r *http.Request) {
 	answer.Paginator.SumOfPages = int(math.Ceil(float64(dba.Count) / float64(NewsOnPage)))
 	bytes, err := json.Marshal(answer)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Marshal error: %s", err.Error()), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("latest Marshal error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 	w.Write(bytes)
@@ -160,13 +161,13 @@ func (api *API) filter(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/filter/%d/%d/%s", page, NewsOnPage, k))
 	if err != nil {
-		http.Error(w, fmt.Sprintf("http.Get error: %s", err.Error()), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("filter http.Get error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 
 	bPosts, err := io.ReadAll(resp.Body)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("ReadAll error: %s", err.Error()), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("filter ReadAll error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 
@@ -178,7 +179,7 @@ func (api *API) filter(w http.ResponseWriter, r *http.Request) {
 	dba := DBAnswer{}
 	err = json.Unmarshal(bPosts, &dba)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Unmarshal error: %s", err.Error()), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("filter Unmarshal error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 	answer := GWAnswer{}
@@ -188,10 +189,33 @@ func (api *API) filter(w http.ResponseWriter, r *http.Request) {
 	answer.Paginator.SumOfPages = int(math.Ceil(float64(dba.Count) / float64(NewsOnPage)))
 	bytes, err := json.Marshal(answer)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Marshal error: %s", err.Error()), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("filter Marshal error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 	w.Write(bytes)
+}
+
+func (api *API) storeComment(w http.ResponseWriter, r *http.Request) {
+	bComment, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("APIsrv storeComment ReadAll error: %s", err.Error()), http.StatusBadRequest)
+		return
+	}
+
+	c := Comment{}
+	err = json.Unmarshal(bComment, &c)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("APIsrv storeComment Unmarshal error: %s", err.Error()), http.StatusBadRequest)
+		return
+	}
+
+	resp, err := http.Post("http://127.0.0.1:8082/comments/", "JSON", bytes.NewReader(bComment))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("storeComment http.Post error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(resp.StatusCode)
 }
 
 //метод получения детальной новости,
