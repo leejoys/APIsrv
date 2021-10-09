@@ -80,8 +80,8 @@ func (api *API) endpoints() {
 	api.r.HandleFunc("/news/latest", api.latest).Methods(http.MethodGet)
 	//метод фильтра новостей
 	api.r.HandleFunc("/news/filter", api.filter).Methods(http.MethodGet)
-	// //метод получения детальной новости
-	// api.r.HandleFunc("/news/detailed", api.detailed).Methods(http.MethodGet)
+	//метод получения детальной новости
+	api.r.HandleFunc("/news/detailed", api.detailed).Methods(http.MethodGet)
 	//метод добавления комментария
 	api.r.HandleFunc("/comments/store", api.storeComment).Methods(http.MethodPost)
 	// //метод получения комментариев по id новости.
@@ -209,7 +209,7 @@ func (api *API) storeComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := http.Post("http://127.0.0.1:8082/comments/", "JSON", bytes.NewReader(bComment))
+	resp, err := http.Post("http://127.0.0.1:8082/comments", "JSON", bytes.NewReader(bComment))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("storeComment http.Post error: %s", err.Error()), http.StatusInternalServerError)
 		return
@@ -220,6 +220,53 @@ func (api *API) storeComment(w http.ResponseWriter, r *http.Request) {
 
 //метод получения детальной новости,
 //localhost:8080/news/detailed?id=1
+func (api *API) detailed(w http.ResponseWriter, r *http.Request) {
+	id := 0
+	idS := r.URL.Query().Get("id")
+	if idS != "" {
+		var err error
+		id, err = strconv.Atoi(idS)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/news/%d/%d", id))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("latest http.Get error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	bPosts, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("latest ReadAll error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	if resp.StatusCode != 200 {
+		http.Error(w, string(bPosts), http.StatusInternalServerError)
+		return
+	}
+
+	dba := DBAnswer{}
+	err = json.Unmarshal(bPosts, &dba)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("latest Unmarshal error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+	answer := GWAnswer{}
+	answer.PostsArr = dba.Posts
+	answer.Paginator.NewsOnPage = NewsOnPage
+	answer.Paginator.CurrentPage = page
+	answer.Paginator.SumOfPages = int(math.Ceil(float64(dba.Count) / float64(NewsOnPage)))
+	bytes, err := json.Marshal(answer)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("latest Marshal error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+	w.Write(bytes)
+}
+
 // func (api *API) detailed(w http.ResponseWriter, r *http.Request) {
 // 	idS := r.URL.Query().Get("id")
 // 	id, err := strconv.Atoi(idS)
