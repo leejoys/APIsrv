@@ -14,8 +14,8 @@ import (
 
 const NewsOnPage = 15
 
-//Модель полной формы новости
-type NewsFullDetailed struct {
+//Модель новости
+type News struct {
 	ID      int    `xml:"-" json:"ID"`                // номер записи
 	Title   string `xml:"title" json:"Title"`         // заголовок публикации
 	Content string `xml:"description" json:"Content"` // содержание публикации
@@ -24,30 +24,29 @@ type NewsFullDetailed struct {
 	Link    string `xml:"link" json:"Link"`           // ссылка на источник
 }
 
-//Модель короткой формы новости
-type NewsShortDetailed struct {
-	ID      int    `xml:"-" json:"ID"`                // номер записи
-	Title   string `xml:"title" json:"Title"`         // заголовок публикации
-	Content string `xml:"description" json:"Content"` // содержание публикации
-	PubDate string `xml:"pubDate" json:"-"`           // время публикации из RSS
-	PubTime int64  `xml:"-" json:"PubTime"`           //время публикации для БД и фронта
-	Link    string `xml:"link" json:"Link"`           // ссылка на источник
-}
-
+// объект пагинации
 type Paginator struct {
 	SumOfPages  int
 	CurrentPage int
 	NewsOnPage  int
 }
 
+//объект ответа БД новостей
 type DBAnswer struct {
 	Count int
-	Posts []NewsShortDetailed
+	Posts []News
 }
 
-type GWAnswer struct {
-	PostsArr  []NewsShortDetailed
+//Модель короткой формы новостей
+type NewsShortDetailed struct {
+	PostsArr  []News
 	Paginator Paginator
+}
+
+//Модель полной формы новости
+type NewsFullDetailed struct {
+	Post        News
+	CommentsArr []Comment
 }
 
 // Comment - комментарий.
@@ -130,7 +129,7 @@ func (api *API) latest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("latest Unmarshal error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
-	answer := GWAnswer{}
+	answer := NewsShortDetailed{}
 	answer.PostsArr = dba.Posts
 	answer.Paginator.NewsOnPage = NewsOnPage
 	answer.Paginator.CurrentPage = page
@@ -182,7 +181,7 @@ func (api *API) filter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("filter Unmarshal error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
-	answer := GWAnswer{}
+	answer := NewsShortDetailed{}
 	answer.PostsArr = dba.Posts
 	answer.Paginator.NewsOnPage = NewsOnPage
 	answer.Paginator.CurrentPage = page
@@ -231,37 +230,61 @@ func (api *API) detailed(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/news/%d/%d", id))
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/detailed/%d", id))
 	if err != nil {
-		http.Error(w, fmt.Sprintf("latest http.Get error: %s", err.Error()), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("detailed http.Get 8081 error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 
-	bPosts, err := io.ReadAll(resp.Body)
+	bPost, err := io.ReadAll(resp.Body)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("latest ReadAll error: %s", err.Error()), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("detailed ReadAll 8081 error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 
 	if resp.StatusCode != 200 {
-		http.Error(w, string(bPosts), http.StatusInternalServerError)
+		http.Error(w, string(bPost), http.StatusInternalServerError)
 		return
 	}
 
-	dba := DBAnswer{}
-	err = json.Unmarshal(bPosts, &dba)
+	p := News{}
+	err = json.Unmarshal(bPost, &p)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("latest Unmarshal error: %s", err.Error()), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("detailed Unmarshal 8081 error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
-	answer := GWAnswer{}
-	answer.PostsArr = dba.Posts
-	answer.Paginator.NewsOnPage = NewsOnPage
-	answer.Paginator.CurrentPage = page
-	answer.Paginator.SumOfPages = int(math.Ceil(float64(dba.Count) / float64(NewsOnPage)))
+
+	resp, err = http.Get(fmt.Sprintf("http://127.0.0.1:8082/comments/%d", id))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("detailed http.Get 8082 error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	bComms, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("detailed ReadAll 8082 error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	if resp.StatusCode != 200 {
+		http.Error(w, string(bComms), http.StatusInternalServerError)
+		return
+	}
+
+	c := []Comment{}
+	err = json.Unmarshal(bComms, &c)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("detailed Unmarshal 8082 error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	answer := NewsFullDetailed{}
+	answer.Post = p
+	answer.CommentsArr = c
+
 	bytes, err := json.Marshal(answer)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("latest Marshal error: %s", err.Error()), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("detailed Marshal error: %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 	w.Write(bytes)
