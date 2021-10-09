@@ -208,6 +208,23 @@ func (api *API) storeComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cens, err := http.Post("http://127.0.0.1:8083/cens", "text", bytes.NewReader([]byte(c.Content)))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("storeComment censPost error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	bCens, err := io.ReadAll(cens.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("filter ReadAll error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	if cens.StatusCode != 200 {
+		http.Error(w, string(bCens), http.StatusInternalServerError)
+		return
+	}
+
 	resp, err := http.Post("http://127.0.0.1:8082/comments", "JSON", bytes.NewReader(bComment))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("storeComment http.Post error: %s", err.Error()), http.StatusInternalServerError)
