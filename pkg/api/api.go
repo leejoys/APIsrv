@@ -247,58 +247,117 @@ func (api *API) detailed(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/detailed/%d", id))
-	if err != nil {
-		http.Error(w, fmt.Sprintf("detailed http.Get 8081 error: %s", err.Error()), http.StatusInternalServerError)
-		return
+
+	type newsDTO struct {
+		news News
+		err  error
+	}
+	type commentsDTO struct {
+		comments []Comment
+		err      error
 	}
 
-	bPost, err := io.ReadAll(resp.Body)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("detailed ReadAll 8081 error: %s", err.Error()), http.StatusInternalServerError)
-		return
-	}
+	detailedFunc := func(ch chan newsDTO) {
+		nDTO := newsDTO{}
+		det, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/detailed/%d", id))
+		if err != nil {
+			nDTO.news = News{}
+			nDTO.err = fmt.Errorf("detailed http.Get 8081 error: %s", err)
+			ch <- nDTO
+			return
+		}
 
-	if resp.StatusCode != 200 {
-		http.Error(w, string(bPost), http.StatusInternalServerError)
-		return
-	}
+		bPost, err := io.ReadAll(det.Body)
+		if err != nil {
+			nDTO.news = News{}
+			nDTO.err = fmt.Errorf("detailed ReadAll 8081 error: %s", err)
+			ch <- nDTO
+			return
+		}
 
-	p := News{}
-	err = json.Unmarshal(bPost, &p)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("detailed Unmarshal 8081 error: %s", err.Error()), http.StatusInternalServerError)
-		return
-	}
+		if det.StatusCode != 200 {
+			nDTO.news = News{}
+			nDTO.err = fmt.Errorf("detailed !=200 8081 error: %s", string(bPost))
+			ch <- nDTO
+			return
+		}
 
-	resp, err = http.Get(fmt.Sprintf("http://127.0.0.1:8082/comments/%d", id))
-	if err != nil {
-		http.Error(w, fmt.Sprintf("detailed http.Get 8082 error: %s", err.Error()), http.StatusInternalServerError)
-		return
+		p := News{}
+		err = json.Unmarshal(bPost, &p)
+		if err != nil {
+			nDTO.news = News{}
+			nDTO.err = fmt.Errorf("detailed Unmarshal 8081 error: %s", err)
+			ch <- nDTO
+			return
+		}
+		nDTO.news = p
+		nDTO.err = nil
+		ch <- nDTO
 	}
+	commentsFunc := func(ch chan commentsDTO) {
+		cDTO := commentsDTO{}
+		com, err := http.Get(fmt.Sprintf("http://127.0.0.1:8082/comments/%d", id))
+		if err != nil {
+			cDTO.comments = []Comment{}
+			cDTO.err = fmt.Errorf("detailed http.Get 8082 error: %s", err)
+			ch <- cDTO
+			return
+		}
 
-	bComms, err := io.ReadAll(resp.Body)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("detailed ReadAll 8082 error: %s", err.Error()), http.StatusInternalServerError)
-		return
-	}
+		bComms, err := io.ReadAll(com.Body)
+		if err != nil {
+			cDTO.comments = []Comment{}
+			cDTO.err = fmt.Errorf("detailed ReadAll 8082 error: %s", err)
+			ch <- cDTO
+			return
+		}
 
-	if resp.StatusCode != 200 {
-		http.Error(w, string(bComms), http.StatusInternalServerError)
-		return
-	}
+		if com.StatusCode != 200 {
+			cDTO.comments = []Comment{}
+			cDTO.err = fmt.Errorf("detailed !=200 8082 error: %s", string(bComms))
+			ch <- cDTO
+			return
+		}
 
-	c := []Comment{}
-	err = json.Unmarshal(bComms, &c)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("detailed Unmarshal 8082 error: %s", err.Error()), http.StatusInternalServerError)
-		return
+		c := []Comment{}
+		err = json.Unmarshal(bComms, &c)
+		if err != nil {
+			cDTO.comments = []Comment{}
+			cDTO.err = fmt.Errorf("detailed Unmarshal 8082 error: %s", err)
+			ch <- cDTO
+			return
+		}
+		cDTO.comments = c
+		cDTO.err = nil
+		ch <- cDTO
 	}
 
 	answer := NewsFullDetailed{}
-	answer.Post = p
-	answer.CommentsArr = c
+	newschan := make(chan newsDTO, 1)
+	commentschan := make(chan commentsDTO, 1)
+	go detailedFunc(newschan)
+	go commentsFunc(commentschan)
 
+	for i := 0; i < 2; i++ {
+		select {
+		case ndto := <-newschan:
+			{
+				if ndto.err != nil {
+					http.Error(w, fmt.Sprintf("detailed newschan error: %s", ndto.err.Error()), http.StatusInternalServerError)
+					return
+				}
+				answer.Post = ndto.news
+			}
+		case cdto := <-commentschan:
+			{
+				if cdto.err != nil {
+					http.Error(w, fmt.Sprintf("detailed commentschan error: %s", cdto.err.Error()), http.StatusInternalServerError)
+					return
+				}
+				answer.CommentsArr = cdto.comments
+			}
+		}
+	}
 	bytes, err := json.Marshal(answer)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("detailed Marshal error: %s", err.Error()), http.StatusInternalServerError)
@@ -306,26 +365,6 @@ func (api *API) detailed(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Write(bytes)
 }
-
-// func (api *API) detailed(w http.ResponseWriter, r *http.Request) {
-// 	idS := r.URL.Query().Get("id")
-// 	id, err := strconv.Atoi(idS)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusBadRequest)
-// 		return
-// 	}
-// 	post, err := api.newsDB.PostsDetailedN(id)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-// 	bytes, err := json.Marshal(post)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-// 	w.Write(bytes)
-// }
 
 //метод получения комментария по id.
 //localhost:8080/comments/1
