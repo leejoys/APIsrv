@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"time"
 
 	"github.com/gofrs/uuid"
 	"github.com/gorilla/mux"
@@ -112,12 +113,16 @@ func (api *API) requestId(next http.Handler) http.Handler {
 		r = r.WithContext(ctx)
 		rec := httptest.NewRecorder()
 		next.ServeHTTP(rec, r)
-		log.Println(rec.Result().StatusCode)
 		for k, v := range rec.Result().Header {
 			w.Header()[k] = v
 		}
 		w.WriteHeader(rec.Code)
 		rec.Body.WriteTo(w)
+
+		log.Println(time.Now())
+		log.Println(rec.Result().StatusCode)
+		log.Println(id)
+		log.Println(r.RemoteAddr)
 	})
 }
 
