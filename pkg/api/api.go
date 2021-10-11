@@ -2,13 +2,17 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 
+	"github.com/gofrs/uuid"
 	"github.com/gorilla/mux"
 )
 
@@ -85,6 +89,36 @@ func (api *API) endpoints() {
 	api.r.HandleFunc("/comments/store", api.storeComment).Methods(http.MethodPost)
 	// //метод получения комментариев по id новости.
 	// api.r.HandleFunc("/comments/{id}", api.comments).Methods(http.MethodGet)
+	//TODO
+	//request_id-context
+	api.r.Use(api.requestId)
+}
+
+//?request_id=327183798123
+func (api *API) requestId(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		id := r.URL.Query().Get("request_id")
+		if id == "" {
+			uid, err := uuid.NewV4()
+			if err != nil {
+				http.Error(w, fmt.Sprintf("uuid.NewV4 error: %s", err.Error()), http.StatusInternalServerError)
+				return
+			}
+			id = uid.String()
+		}
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, "request_id", id)
+		r = r.WithContext(ctx)
+		rec := httptest.NewRecorder()
+		next.ServeHTTP(rec, r)
+		log.Println(rec.Result().StatusCode)
+		for k, v := range rec.Result().Header {
+			w.Header()[k] = v
+		}
+		w.WriteHeader(rec.Code)
+		rec.Body.WriteTo(w)
+	})
 }
 
 // Получение маршрутизатора запросов.
@@ -207,8 +241,8 @@ func (api *API) storeComment(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("APIsrv storeComment Unmarshal error: %s", err.Error()), http.StatusBadRequest)
 		return
 	}
-
-	cens, err := http.Post("http://127.0.0.1:8083/cens", "text", bytes.NewReader([]byte(c.Content)))
+	id := r.Context().Value("request_id")
+	cens, err := http.Post(fmt.Sprintf("http://127.0.0.1:8083/cens?request_id=%s", id), "text", bytes.NewReader([]byte(c.Content)))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("storeComment censPost error: %s", err.Error()), http.StatusInternalServerError)
 		return
@@ -225,7 +259,7 @@ func (api *API) storeComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := http.Post("http://127.0.0.1:8082/comments", "JSON", bytes.NewReader(bComment))
+	resp, err := http.Post(fmt.Sprintf("http://127.0.0.1:8082/comments?request_id=%s", id), "JSON", bytes.NewReader(bComment))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("storeComment http.Post error: %s", err.Error()), http.StatusInternalServerError)
 		return
