@@ -21,12 +21,12 @@ const NewsOnPage = 15
 
 //Модель новости
 type News struct {
-	ID      int    `xml:"-" json:"ID"`                // номер записи
-	Title   string `xml:"title" json:"Title"`         // заголовок публикации
-	Content string `xml:"description" json:"Content"` // содержание публикации
-	PubDate string `xml:"pubDate" json:"-"`           // время публикации из RSS
-	PubTime int64  `xml:"-" json:"PubTime"`           //время публикации для БД и фронта
-	Link    string `xml:"link" json:"Link"`           // ссылка на источник
+	ID      int    `json:"ID"`                // номер записи
+	Title   string `json:"Title"`         // заголовок публикации
+	Content string `json:"Content"` // содержание публикации
+	PubDate string `json:"-"`           // время публикации из RSS
+	PubTime int64  `json:"PubTime"`           //время публикации для БД и фронта
+	Link    string `json:"Link"`           // ссылка на источник
 }
 
 // объект пагинации
