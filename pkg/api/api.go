@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"time"
 
@@ -88,17 +88,20 @@ func (api *API) endpoints() {
 	api.r.HandleFunc("/news/detailed", api.detailed).Methods(http.MethodGet)
 	//метод добавления комментария
 	api.r.HandleFunc("/comments/store", api.storeComment).Methods(http.MethodPost)
-	// //метод получения комментариев по id новости.
-	// api.r.HandleFunc("/comments/{id}", api.comments).Methods(http.MethodGet)
-	//TODO
-	//request_id-context
-	api.r.Use(api.requestId)
+	//мидлварь для сквозной идентификации и логгирования
+	api.r.Use(api.idLogger)
 }
 
+//мидлварь для сквозной идентификации и логгирования
 //?request_id=327183798123
-func (api *API) requestId(next http.Handler) http.Handler {
+func (api *API) idLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
+		logfile, err := os.OpenFile("./logfile.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0664)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("os.OpenFile error: %s", err.Error()), http.StatusInternalServerError)
+			return
+		}
+		defer logfile.Close()
 		id := r.URL.Query().Get("request_id")
 		if id == "" {
 			uid, err := uuid.NewV4()
@@ -119,10 +122,11 @@ func (api *API) requestId(next http.Handler) http.Handler {
 		w.WriteHeader(rec.Code)
 		rec.Body.WriteTo(w)
 
-		log.Println(time.Now())
-		log.Println(rec.Result().StatusCode)
-		log.Println(id)
-		log.Println(r.RemoteAddr)
+		fmt.Fprintf(logfile, "Request ID:%s\n", id)
+		fmt.Fprintf(logfile, "Time:%s\n", time.Now().Format(time.RFC1123))
+		fmt.Fprintf(logfile, "Remote IP address:%s\n", r.RemoteAddr)
+		fmt.Fprintf(logfile, "HTTP Status:%d\n", rec.Result().StatusCode)
+		fmt.Fprintln(logfile)
 	})
 }
 
@@ -145,7 +149,8 @@ func (api *API) latest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/news/%d/%d", page, NewsOnPage))
+	rid := r.Context().Value("request_id")
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/news/%d/%d?request_id=%s", page, NewsOnPage, rid))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("latest http.Get error: %s", err.Error()), http.StatusInternalServerError)
 		return
@@ -196,8 +201,8 @@ func (api *API) filter(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/filter/%d/%d/%s", page, NewsOnPage, k))
+	rid := r.Context().Value("request_id")
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/filter/%d/%d/%s?request_id=%s", page, NewsOnPage, k, rid))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("filter http.Get error: %s", err.Error()), http.StatusInternalServerError)
 		return
@@ -246,8 +251,8 @@ func (api *API) storeComment(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("APIsrv storeComment Unmarshal error: %s", err.Error()), http.StatusBadRequest)
 		return
 	}
-	id := r.Context().Value("request_id")
-	cens, err := http.Post(fmt.Sprintf("http://127.0.0.1:8083/cens?request_id=%s", id), "text", bytes.NewReader([]byte(c.Content)))
+	rid := r.Context().Value("request_id")
+	cens, err := http.Post(fmt.Sprintf("http://127.0.0.1:8083/cens?request_id=%s", rid), "text", bytes.NewReader([]byte(c.Content)))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("storeComment censPost error: %s", err.Error()), http.StatusInternalServerError)
 		return
@@ -264,7 +269,7 @@ func (api *API) storeComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := http.Post(fmt.Sprintf("http://127.0.0.1:8082/comments?request_id=%s", id), "JSON", bytes.NewReader(bComment))
+	resp, err := http.Post(fmt.Sprintf("http://127.0.0.1:8082/comments?request_id=%s", rid), "JSON", bytes.NewReader(bComment))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("storeComment http.Post error: %s", err.Error()), http.StatusInternalServerError)
 		return
@@ -286,7 +291,7 @@ func (api *API) detailed(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
+	rid := r.Context().Value("request_id")
 	type newsDTO struct {
 		news News
 		err  error
@@ -298,7 +303,7 @@ func (api *API) detailed(w http.ResponseWriter, r *http.Request) {
 
 	detailedFunc := func(ch chan newsDTO) {
 		nDTO := newsDTO{}
-		det, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/detailed/%d", id))
+		det, err := http.Get(fmt.Sprintf("http://127.0.0.1:8081/detailed/%d?request_id=%s", id, rid))
 		if err != nil {
 			nDTO.news = News{}
 			nDTO.err = fmt.Errorf("detailed http.Get 8081 error: %s", err)
@@ -335,7 +340,7 @@ func (api *API) detailed(w http.ResponseWriter, r *http.Request) {
 	}
 	commentsFunc := func(ch chan commentsDTO) {
 		cDTO := commentsDTO{}
-		com, err := http.Get(fmt.Sprintf("http://127.0.0.1:8082/comments/%d", id))
+		com, err := http.Get(fmt.Sprintf("http://127.0.0.1:8082/comments/%d?request_id=%s", id, rid))
 		if err != nil {
 			cDTO.comments = []Comment{}
 			cDTO.err = fmt.Errorf("detailed http.Get 8082 error: %s", err)
@@ -404,25 +409,3 @@ func (api *API) detailed(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Write(bytes)
 }
-
-//метод получения комментария по id.
-//localhost:8080/comments/1
-// func (api *API) comments(w http.ResponseWriter, r *http.Request) {
-// 	idS := mux.Vars(r)["id"]
-// 	id, err := strconv.Atoi(idS)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusBadRequest)
-// 		return
-// 	}
-// 	comments, err := api.commentsDB.Comments(id)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-// 	bytes, err := json.Marshal(comments)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-// 	w.Write(bytes)
-// }
