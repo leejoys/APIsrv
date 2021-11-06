@@ -97,6 +97,7 @@ func (api *API) endpoints() {
 
 //мидлварь для сквозной идентификации и логгирования
 //?request_id=327183798123
+//  todo открывать файл не на каждый запрос и синхронизировать запись, чтоб не было каши
 func (api *API) idLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		file, err := os.OpenFile(logfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0664)
