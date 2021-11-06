@@ -115,8 +115,7 @@ func (api *API) idLogger(next http.Handler) http.Handler {
 			}
 			id = uid.String()
 		}
-		ctx := r.Context()
-		ctx = context.WithValue(ctx, "request_id", id)
+		ctx := context.WithValue(r.Context(), "request_id", id)
 		r = r.WithContext(ctx)
 		rec := httptest.NewRecorder()
 		next.ServeHTTP(rec, r)
